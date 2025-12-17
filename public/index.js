@@ -181,8 +181,10 @@ function initSocketAndPeer() {
     // 3. Conectar PeerJS (Simplificado para Render)
     state.myPeer = new Peer(undefined, {
         // Al estar en el mismo host que el socket, podemos simplificar la configuración.
-        host: 'window.location.hostname', 
-        path: '/peerjs/myapp', // Asegúrate de que esta ruta sea correcta en el servidor
+        host: window.location.hostname, 
+        port: 443, // Si Render usa HTTPS (lo normal)
+        path: '/peerjs/myapp',
+        secure: true
     });
 
     state.myPeer.on('open', function(id) {
