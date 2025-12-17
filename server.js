@@ -1,37 +1,61 @@
+// Servidor de señalización y archivos estáticos combinado.
+// Este servidor sirve el frontend (archivos estáticos) y maneja la señalización (Socket.io/PeerJS).
+
 const express = require('express');
+const path = require('path');
 const cors = require('cors'); 
 const app = express();
 const server = require('http').Server(app);
 const { ExpressPeerServer } = require('peer');
 
-// --- Configuración de CORS ---
-// Usaremos una configuración CORS simple y permisiva para asegurar la conectividad 
-// ya que el error 'xhr poll error' es a menudo un problema de CORS o firewall.
-// En producción, se recomienda restringir a la URL del frontend.
+// --- 1. CONFIGURACIÓN CORS GLOBAL (CUALQUIER ORIGEN) ---
+// Mantenemos CORS abierto para compatibilidad con servicios externos.
 const corsOptions = {
-    origin: '*', // Permitir todos los orígenes para la aplicación Express
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    origin: '*', 
+    methods: ['GET', 'POST'],
+    credentials: true
 };
-
 app.use(cors(corsOptions)); 
 
-// --- Configuración de Socket.IO ---
-const io = require('socket.io')(server, {
-    // La configuración de CORS para Socket.IO es crítica para evitar 'xhr poll error'.
-    cors: {
-        origin: '*', // Permitir cualquier origen (necesario para la mayoría de las pruebas en Canvas/desarrollo)
-        methods: ['GET', 'POST'], // Los métodos HTTP utilizados por el polling de Socket.IO
-        credentials: true
-    }
-});
+// --- 2. SERVIR ARCHIVOS ESTÁTICOS (Frontend) ---
+// Sirve todos los archivos dentro de la carpeta 'public'.
+app.use(express.static(path.join(__dirname, 'public')));
+console.log('Sirviendo archivos estáticos desde la carpeta: public');
 
-// --- Configuración de PeerJS ---
+
+// --- 3. CONFIGURACIÓN PEERJS SERVER (PARA WEBRTC) ---
+// Debe ir antes de la ruta catch-all para que /peerjs/* sea manejado por PeerJS.
 const peerServer = ExpressPeerServer(server, {
-    path: '/myapp'
+    debug: true,
+    path: '/myapp' // Ruta accesible en [URL_SERVIDOR]/peerjs/myapp
 });
 app.use('/peerjs', peerServer);
 
-// --- Lógica de la aplicación ---
+
+// --- 4. RUTA CATCH-ALL DEFINITIVA (Middleware Fallback) ---
+// Usamos app.use() sin path para que actúe como el último middleware. 
+// Esto evita los problemas de PathError con '*' o '/*' que viste en Render.
+app.use((req, res) => {
+    // Si la solicitud no fue manejada por express.static ni por /peerjs, envía el index.html
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
+// --- 5. CONFIGURACIÓN SOCKET.IO ---
+const io = require('socket.io')(server, {
+    cors: {
+        origin: '*', 
+        methods: ['GET', 'POST'],
+        credentials: true
+    },
+    // Parámetros de estabilidad recomendados para Proxies (como Render)
+    transports: ['websocket', 'polling'],
+    pingTimeout: 10000, // 10 segundos (Tiempo para esperar el ping/pong)
+    pingInterval: 5000 // 5 segundos (Frecuencia de envío de pings)
+});
+
+
+// --- 6. LÓGICA DE LA APLICACIÓN (SOCKET.IO) ---
 const usersInRoom = {};
 
 io.on('connection', socket => {
@@ -47,60 +71,54 @@ io.on('connection', socket => {
             usersInRoom[roomId] = [];
         }
 
-        socket.emit('all-users', usersInRoom[roomId]);
+        // Antes de emitir, nos aseguramos de enviar una copia segura del array para evitar referencias
+        const currentUsers = usersInRoom[roomId].map(user => ({ userId: user.userId, userName: user.userName }));
+        socket.emit('all-users', currentUsers);
 
-        usersInRoom[roomId].push({ userId, userName });
+        const userExists = usersInRoom[roomId].some(user => user.userId === userId);
+        if (!userExists) {
+            usersInRoom[roomId].push({ userId, userName });
+            socket.to(roomId).emit('user-joined', { userId, userName });
+        }
         
-        // Emite a todos en la sala EXCEPTO a quien se une
-        socket.to(roomId).emit('user-connected', userId, userName);
+        console.log(`${userName} (${userId}) se unió a la sala: ${roomId}`);
 
-        console.log(`Usuario ${userName} (${userId}) se unió a la sala ${roomId}. Usuarios en sala: ${usersInRoom[roomId].length}`);
     });
-
-    socket.on('send-message', (message, userName, timestamp) => {
-        io.to(socket.room).emit('receive-message', {
-            text: message,
-            sender: userName,
-            timestamp: timestamp,
-            userId: socket.userId
-        });
-        console.log(`Mensaje en la sala ${socket.room} de ${userName}: ${message}`);
+    
+    socket.on('message', (message) => {
+        socket.to(socket.room).emit('createMessage', message, socket.userName);
     });
-
+    
     socket.on('emoji-reaction', (emoji) => {
-        io.to(socket.room).emit('receive-reaction', socket.userId, socket.userName, emoji);
-        console.log(`Reacción de ${socket.userName} en la sala ${socket.room}: ${emoji}`);
+        io.to(socket.room).emit('user-reaction', socket.userId, emoji);
     });
 
     socket.on('screen-share-started', () => {
         io.to(socket.room).emit('screen-share-active', socket.userId, socket.userName);
-        console.log(`${socket.userName} inició la compartición de pantalla.`);
     });
 
     socket.on('stop-screen-share', () => {
         io.to(socket.room).emit('screen-share-inactive', socket.userId);
-        console.log(`${socket.userName} detuvo la compartición de pantalla.`);
     });
 
-    // Nuevo evento para cambiar el tema
     socket.on('change-theme', (theme) => {
-        // Emitir el cambio de tema a todos en la misma sala, incluido el emisor
         io.to(socket.room).emit('theme-changed', theme);
-        console.log(`Tema cambiado a ${theme} en la sala ${socket.room} por ${socket.userName}`);
     });
-
 
     socket.on('disconnect', () => {
         console.log('User disconnected: ' + socket.userName + ' (' + socket.userId + ')');
         if (socket.room && socket.userId) { 
             usersInRoom[socket.room] = usersInRoom[socket.room].filter(user => user.userId !== socket.userId);
             socket.to(socket.room).emit('user-disconnected', socket.userId, socket.userName);
-            console.log(`Usuario ${socket.userName} (${socket.userId}) se desconectó de la sala ${socket.room}. Usuarios restantes: ${usersInRoom[socket.room].length}`);
         }
     });
 });
 
-const PORT = process.env.PORT || 3000;
+// --- 7. INICIO DEL SERVIDOR ---
+
+const PORT = process.env.PORT || 9000; 
+
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Servidor combinado corriendo en puerto ${PORT}`);
+    console.log('CORS configurado para permitir CUALQUIER origen (*).');
 });
