@@ -1,26 +1,38 @@
-// Servidor de señalización Node.js/Express para WebRTC y Socket.io
-// Este servidor está configurado para permitir conexiones desde CUALQUIER origen.
+// Servidor de señalización y archivos estáticos combinado.
+// Este servidor sirve el frontend (archivos estáticos) y maneja la señalización (Socket.io/PeerJS).
 
 const express = require('express');
+const path = require('path');
 const cors = require('cors'); 
 const app = express();
-const server = require('http').Server(app); // Creamos el servidor HTTP
-const { ExpressPeerServer } = require('peer'); // Importamos PeerJS Server
+const server = require('http').Server(app);
+const { ExpressPeerServer } = require('peer');
 
 // --- 1. CONFIGURACIÓN CORS GLOBAL (CUALQUIER ORIGEN) ---
-
-// Configuración CORS para Express. Permite todos los orígenes (*).
+// Aunque vamos a servir el frontend, mantenemos CORS abierto para mayor compatibilidad.
 const corsOptions = {
-    origin: '*', // Permite todos los orígenes
+    origin: '*', 
     methods: ['GET', 'POST'],
     credentials: true
 };
-
 app.use(cors(corsOptions)); 
 
-// --- 2. CONFIGURACIÓN SOCKET.IO ---
+// --- 2. SERVIR ARCHIVOS ESTÁTICOS (Frontend) ---
+// Esto le dice a Express que sirva todos los archivos dentro de la carpeta 'public'.
+// Asegúrate de que tu index.html, CSS y JS estén dentro de una carpeta llamada 'public'.
+app.use(express.static(path.join(__dirname, 'public')));
+console.log('Sirviendo archivos estáticos desde la carpeta: public');
+
+
+// Ruta Catch-all: Si la ruta no es una API ni un archivo estático, devuelve el index.html
+app.get('*', (req, res) => {
+    // Si estás usando un frontend de una sola página (SPA) como React/Vue, esto asegura que el enrutamiento funcione.
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
+// --- 3. CONFIGURACIÓN SOCKET.IO ---
 const io = require('socket.io')(server, {
-    // Configuración CORS para Socket.io. Permite todos los orígenes (*).
     cors: {
         origin: '*', 
         methods: ['GET', 'POST'],
@@ -29,14 +41,14 @@ const io = require('socket.io')(server, {
     transports: ['websocket', 'polling']
 });
 
-// --- 3. CONFIGURACIÓN PEERJS SERVER (PARA WEBRTC) ---
+// --- 4. CONFIGURACIÓN PEERJS SERVER (PARA WEBRTC) ---
 const peerServer = ExpressPeerServer(server, {
     debug: true,
     path: '/myapp' // Ruta accesible en [URL_SERVIDOR]/peerjs/myapp
 });
 app.use('/peerjs', peerServer);
 
-// --- 4. LÓGICA DE LA APLICACIÓN ---
+// --- 5. LÓGICA DE LA APLICACIÓN (SOCKET.IO) ---
 const usersInRoom = {};
 
 io.on('connection', socket => {
@@ -52,14 +64,11 @@ io.on('connection', socket => {
             usersInRoom[roomId] = [];
         }
 
-        // Antes de unirse, notificar a los demás sobre los usuarios existentes
         socket.emit('all-users', usersInRoom[roomId]);
 
-        // Asegúrate de que el usuario no exista antes de agregarlo (manejo de reconexión/multiples pestañas)
         const userExists = usersInRoom[roomId].some(user => user.userId === userId);
         if (!userExists) {
             usersInRoom[roomId].push({ userId, userName });
-            // Notificar a todos los demás en la sala sobre el nuevo usuario
             socket.to(roomId).emit('user-joined', { userId, userName });
         }
         
@@ -67,12 +76,10 @@ io.on('connection', socket => {
 
     });
     
-    // [EVENTOS DE COMUNICACIÓN]
-
     socket.on('message', (message) => {
         socket.to(socket.room).emit('createMessage', message, socket.userName);
     });
-
+    
     socket.on('emoji-reaction', (emoji) => {
         io.to(socket.room).emit('user-reaction', socket.userId, emoji);
     });
@@ -89,25 +96,20 @@ io.on('connection', socket => {
         io.to(socket.room).emit('theme-changed', theme);
     });
 
-
-    // [EVENTO DE DESCONEXIÓN]
     socket.on('disconnect', () => {
         console.log('User disconnected: ' + socket.userName + ' (' + socket.userId + ')');
         if (socket.room && socket.userId) { 
-            // Remover al usuario de la lista
             usersInRoom[socket.room] = usersInRoom[socket.room].filter(user => user.userId !== socket.userId);
-            
-            // Notificar a los demás
             socket.to(socket.room).emit('user-disconnected', socket.userId, socket.userName);
         }
     });
 });
 
-// --- 5. INICIO DEL SERVIDOR ---
+// --- 6. INICIO DEL SERVIDOR ---
 
 const PORT = process.env.PORT || 9000; 
 
 server.listen(PORT, () => {
-    console.log(`Servidor de reuniones corriendo en puerto ${PORT}`);
-    console.log('ADVERTENCIA: CORS configurado para permitir CUALQUIER origen (*).');
+    console.log(`Servidor combinado corriendo en puerto ${PORT}`);
+    console.log('CORS configurado para permitir CUALQUIER origen (*).');
 });
