@@ -24,8 +24,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 console.log('Sirviendo archivos estáticos desde la carpeta: public');
 
 
-// Ruta Catch-all: Si la ruta no es una API ni un archivo estático, devuelve el index.html
-app.get('*', (req, res) => {
+// Ruta Catch-all CORREGIDA: Si la ruta no es una API ni un archivo estático, devuelve el index.html
+// Se cambió '*' por '/*' para evitar el PathError en Render.
+app.get('/*', (req, res) => {
     // Si estás usando un frontend de una sola página (SPA) como React/Vue, esto asegura que el enrutamiento funcione.
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -64,7 +65,9 @@ io.on('connection', socket => {
             usersInRoom[roomId] = [];
         }
 
-        socket.emit('all-users', usersInRoom[roomId]);
+        // Antes de emitir, nos aseguramos de enviar una copia segura del array para evitar referencias
+        const currentUsers = usersInRoom[roomId].map(user => ({ userId: user.userId, userName: user.userName }));
+        socket.emit('all-users', currentUsers);
 
         const userExists = usersInRoom[roomId].some(user => user.userId === userId);
         if (!userExists) {

@@ -20,7 +20,7 @@ var state = {
 // Asegúrate de que este servidor esté ACTIVO. Si está en Render.com, podría estar dormido.
 var SERVER_URL = "https://mundi-link-lite-server.onrender.com";
 
-// --- ELEMENTOS DOM (Cache) ---
+// --- ELEMENTOS DOM (Cache) --- 
 var dom = {
     lobby: document.getElementById('lobbyContainer'),
     callRoom: document.getElementById('callContainer'),
