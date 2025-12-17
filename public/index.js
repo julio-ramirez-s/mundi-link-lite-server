@@ -18,7 +18,7 @@ var state = {
 
 // URL del servidor (Backend original)
 // **IMPORTANTE:** Se elimina la URL hardcodeada para que Socket.io se conecte al host actual (donde está alojado el servidor combinado).
-// var SERVER_URL = "https://mundi-link-lite-server.onrender.com";
+var SERVER_URL = "https://mundi-link-lite-server.onrender.com";
 
 // --- ELEMENTOS DOM (Cache) --- 
 var dom = {
