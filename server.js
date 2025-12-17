@@ -9,7 +9,7 @@ const server = require('http').Server(app);
 const { ExpressPeerServer } = require('peer');
 
 // --- 1. CONFIGURACIÓN CORS GLOBAL (CUALQUIER ORIGEN) ---
-// Aunque vamos a servir el frontend, mantenemos CORS abierto para mayor compatibilidad.
+// Mantenemos CORS abierto para compatibilidad con servicios externos.
 const corsOptions = {
     origin: '*', 
     methods: ['GET', 'POST'],
@@ -18,21 +18,30 @@ const corsOptions = {
 app.use(cors(corsOptions)); 
 
 // --- 2. SERVIR ARCHIVOS ESTÁTICOS (Frontend) ---
-// Esto le dice a Express que sirva todos los archivos dentro de la carpeta 'public'.
-// Asegúrate de que tu index.html, CSS y JS estén dentro de una carpeta llamada 'public'.
+// Sirve todos los archivos dentro de la carpeta 'public'.
 app.use(express.static(path.join(__dirname, 'public')));
 console.log('Sirviendo archivos estáticos desde la carpeta: public');
 
 
-// Ruta Catch-all CORREGIDA: Si la ruta no es una API ni un archivo estático, devuelve el index.html
-// Se cambió '*' por '/*' para evitar el PathError en Render.
-app.get('/*', (req, res) => {
-    // Si estás usando un frontend de una sola página (SPA) como React/Vue, esto asegura que el enrutamiento funcione.
+// --- 3. CONFIGURACIÓN PEERJS SERVER (PARA WEBRTC) ---
+// Debe ir antes de la ruta catch-all para que /peerjs/* sea manejado por PeerJS.
+const peerServer = ExpressPeerServer(server, {
+    debug: true,
+    path: '/myapp' // Ruta accesible en [URL_SERVIDOR]/peerjs/myapp
+});
+app.use('/peerjs', peerServer);
+
+
+// --- 4. RUTA CATCH-ALL DEFINITIVA (Middleware Fallback) ---
+// Usamos app.use() sin path para que actúe como el último middleware. 
+// Esto evita los problemas de PathError con '*' o '/*' que viste en Render.
+app.use((req, res) => {
+    // Si la solicitud no fue manejada por express.static ni por /peerjs, envía el index.html
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 
-// --- 3. CONFIGURACIÓN SOCKET.IO ---
+// --- 5. CONFIGURACIÓN SOCKET.IO ---
 const io = require('socket.io')(server, {
     cors: {
         origin: '*', 
@@ -42,14 +51,8 @@ const io = require('socket.io')(server, {
     transports: ['websocket', 'polling']
 });
 
-// --- 4. CONFIGURACIÓN PEERJS SERVER (PARA WEBRTC) ---
-const peerServer = ExpressPeerServer(server, {
-    debug: true,
-    path: '/myapp' // Ruta accesible en [URL_SERVIDOR]/peerjs/myapp
-});
-app.use('/peerjs', peerServer);
 
-// --- 5. LÓGICA DE LA APLICACIÓN (SOCKET.IO) ---
+// --- 6. LÓGICA DE LA APLICACIÓN (SOCKET.IO) ---
 const usersInRoom = {};
 
 io.on('connection', socket => {
@@ -108,7 +111,7 @@ io.on('connection', socket => {
     });
 });
 
-// --- 6. INICIO DEL SERVIDOR ---
+// --- 7. INICIO DEL SERVIDOR ---
 
 const PORT = process.env.PORT || 9000; 
 
