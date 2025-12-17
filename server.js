@@ -48,7 +48,10 @@ const io = require('socket.io')(server, {
         methods: ['GET', 'POST'],
         credentials: true
     },
-    transports: ['websocket', 'polling']
+    // Parámetros de estabilidad recomendados para Proxies (como Render)
+    transports: ['websocket', 'polling'],
+    pingTimeout: 10000, // 10 segundos (Tiempo para esperar el ping/pong)
+    pingInterval: 5000 // 5 segundos (Frecuencia de envío de pings)
 });
 
 

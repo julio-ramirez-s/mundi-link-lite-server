@@ -181,7 +181,7 @@ function initSocketAndPeer() {
     // 3. Conectar PeerJS (Simplificado para Render)
     state.myPeer = new Peer(undefined, {
         // Al estar en el mismo host que el socket, podemos simplificar la configuración.
-        host: 'meet-clone-v0ov.onrender.com', 
+        host: 'window.location.hostname', 
         path: '/peerjs/myapp', // Asegúrate de que esta ruta sea correcta en el servidor
     });
 
