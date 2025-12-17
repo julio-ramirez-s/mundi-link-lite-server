@@ -181,7 +181,7 @@ function initSocketAndPeer() {
     // 3. Conectar PeerJS (Simplificado para Render)
     state.myPeer = new Peer(undefined, {
         // Al estar en el mismo host que el socket, podemos simplificar la configuración.
-        host: window.location.hostname, 
+        host: "https://mundi-link-lite-server.onrender.com", 
         port: 443, // Si Render usa HTTPS (lo normal)
         path: '/peerjs/myapp',
         secure: true
