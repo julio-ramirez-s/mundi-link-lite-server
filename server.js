@@ -11,7 +11,7 @@ const { ExpressPeerServer } = require('peer');
 // --- 1. CONFIGURACIÓN CORS GLOBAL (CUALQUIER ORIGEN) ---
 // Aunque vamos a servir el frontend, mantenemos CORS abierto para mayor compatibilidad.
 const corsOptions = {
-    origin: '*', 
+    origin: './plublic/index.html', 
     methods: ['GET', 'POST'],
     credentials: true
 };
@@ -34,7 +34,7 @@ app.get('*', (req, res) => {
 // --- 3. CONFIGURACIÓN SOCKET.IO ---
 const io = require('socket.io')(server, {
     cors: {
-        origin: '*', 
+        origin: './plublic/index.html', 
         methods: ['GET', 'POST'],
         credentials: true
     },
